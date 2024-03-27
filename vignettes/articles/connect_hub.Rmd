@@ -54,10 +54,24 @@ hub_con
 
 To access data from a hub connection you can use dplyr verbs and construct querying pipelines.
 
+You can use `dplyr`'s `collect()` function:
 ```{r}
 hub_con %>%
   filter(output_type == "quantile", location == "US") %>%
   collect()
+```
+
+
+or the `hubData` wrapper `collect_hub()` which converts the output to a `model_out_tbl` class object where possible:
+
+```{r}
+tbl <- hub_con %>%
+  filter(output_type == "quantile", location == "US") %>%
+  collect_hub()
+
+tbl
+
+class(tbl)
 ```
 
 Note however that not all dplyr filtering options are available for all data types yet.
@@ -68,9 +82,11 @@ For example, if you wanted to get all quantile predictions for the last forecast
 
 ```{r, error=TRUE}
 hub_con %>%
-  filter(output_type == "quantile", location == "US") %>%
-  filter(forecast_date == max(forecast_date)) %>%
-  collect()
+  filter(
+    output_type == "quantile", location == "US",
+    forecast_date == max(forecast_date, na.rm = TRUE)
+  ) %>%
+  collect_hub()
 ```
 
 This doesn't work however as `arrow` does not have an equivalent `max` method for `Date[32]` data types.
@@ -80,7 +96,7 @@ In such a situation, you could collect after applying the first filtering level 
 ```{r}
 hub_con %>%
   filter(output_type == "quantile", location == "US") %>%
-  collect() %>%
+  collect_hub() %>%
   filter(forecast_date == max(forecast_date))
 ```
 
@@ -93,7 +109,7 @@ Alternatively, depending on the size of the data, in might be quicker to filter 
 last_forecast <- hub_con %>%
   filter(output_type == "quantile", location == "US") %>%
   pull(forecast_date, as_vector = TRUE) %>%
-  max()
+  max(na.rm = TRUE)
 
 
 hub_con %>%
@@ -101,9 +117,22 @@ hub_con %>%
     output_type == "quantile", location == "US",
     forecast_date == last_forecast
   ) %>%
-  collect()
+  collect_hub()
 ```
 
+Or you could use `arrow::to_duckdb()` to first convert the dataset connection to an in memory virtual DuckDB table. This will allows you to run queries that are supported by DuckDB but not by arrow, extending the potential queries that can be run against hub data before collecting.
+
+_For more details see [DuckDB quacks Arrow: A zero-copy data integration between Apache Arrow and DuckDB](https://duckdb.org/2021/12/03/duck-arrow.html)._
+
+```{r}
+hub_con %>%
+  arrow::to_duckdb() %>%
+  filter(
+    output_type == "quantile", location == "US",
+    forecast_date == max(forecast_date, na.rm = TRUE)
+  ) %>%
+  collect_hub()
+```
 
 
 ## Connecting to a model output directory
@@ -124,7 +153,7 @@ mod_out_con
 ```{r}
 mod_out_con %>%
   filter(output_type == "quantile", location == "US") %>%
-  collect()
+  collect_hub()
 ```
 
 
